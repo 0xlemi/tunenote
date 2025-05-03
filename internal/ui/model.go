@@ -26,6 +26,9 @@ var (
 	infoStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("#CCCCCC"))
 
+	debugStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#888888"))
+
 	noSoundStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("#FAFAFA")).
 			Background(lipgloss.Color("#888888")).
@@ -77,6 +80,9 @@ type Model struct {
 	height       int
 	isSilence    bool      // Whether we're currently detecting silence
 	silenceSince time.Time // When we first detected silence
+	audioRMS     float32   // Current RMS level
+	audioDB      float32   // Current dB level
+	showDebug    bool      // Whether to show debug info
 }
 
 // NewModel creates a new UI model
@@ -86,6 +92,7 @@ func NewModel() Model {
 		lastUpdate:   time.Now(),
 		isSilence:    true,
 		silenceSince: time.Now(),
+		showDebug:    true, // Default to showing debug info
 	}
 }
 
@@ -102,6 +109,12 @@ type TickMsg time.Time
 // UpdateNoteMsg is a message to update the current note
 type UpdateNoteMsg pitch.Note
 
+// UpdateAudioLevelMsg is a message to update the audio level display
+type UpdateAudioLevelMsg struct {
+	RMS float32
+	DB  float32
+}
+
 // ClearNoteMsg is sent when we should clear the note display (no sound detected)
 type ClearNoteMsg struct{}
 
@@ -112,6 +125,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch msg.String() {
 		case "q", "ctrl+c":
 			return m, tea.Quit
+		case "d":
+			// Toggle debug display
+			m.showDebug = !m.showDebug
 		}
 
 	case tea.WindowSizeMsg:
@@ -130,6 +146,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		note := pitch.Note(msg)
 		m.currentNote = &note
 		m.lastUpdate = time.Now()
+
+	case UpdateAudioLevelMsg:
+		// Update audio levels for display
+		m.audioRMS = msg.RMS
+		m.audioDB = msg.DB
 
 	case ClearNoteMsg:
 		// Immediately clear the note display - no delay
@@ -220,8 +241,17 @@ func (m Model) View() string {
 		s += infoStyle.Render("Make a sound to see the note...")
 	}
 
-	s += "\n\n"
-	s += infoStyle.Render("Press q to quit")
+	s += "\n"
+
+	// Show debug info if enabled
+	if m.showDebug {
+		dbInfo := fmt.Sprintf("Audio Level: RMS=%.6f, dB=%.1f", m.audioRMS, m.audioDB)
+		s += debugStyle.Render(dbInfo)
+		s += "\n"
+	}
+
+	s += "\n"
+	s += infoStyle.Render("Press d to toggle debug info | Press q to quit")
 
 	return s
 }

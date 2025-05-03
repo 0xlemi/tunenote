@@ -20,8 +20,8 @@ const (
 	channels   = 1
 
 	// Debug settings
-	enableLevelDebug = true            // Set to true to print audio levels
-	debugInterval    = time.Second * 2 // How often to print debug info
+	enableLevelDebug = true                   // Set to true to update debug info in UI
+	debugInterval    = time.Millisecond * 200 // How often to update debug info
 
 	// Note stabilization
 	stabilizationDelay = 300 * time.Millisecond // Delay after volume increase before registering note
@@ -109,9 +109,12 @@ func main() {
 			// Get audio levels for monitoring
 			rms, db := getAudioLevel(buffer)
 
-			// Debug output
+			// Send audio levels to UI instead of printing to terminal
 			if enableLevelDebug && time.Since(lastDebugTime) > debugInterval {
-				fmt.Printf("Audio: RMS=%.6f, dB=%.1f\n", rms, db)
+				p.Send(ui.UpdateAudioLevelMsg{
+					RMS: rms,
+					DB:  db,
+				})
 				lastDebugTime = time.Now()
 			}
 
