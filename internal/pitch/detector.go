@@ -4,7 +4,7 @@ import (
 	"errors"
 	"math"
 
-	"github.com/0xlemi/macnote/internal/audio"
+	"github.com/0xlemi/tunenote/internal/audio"
 )
 
 // Errors

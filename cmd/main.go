@@ -7,9 +7,9 @@ import (
 	"os"
 	"time"
 
-	"github.com/0xlemi/macnote/internal/audio"
-	"github.com/0xlemi/macnote/internal/pitch"
-	"github.com/0xlemi/macnote/internal/ui"
+	"github.com/0xlemi/tunenote/internal/audio"
+	"github.com/0xlemi/tunenote/internal/pitch"
+	"github.com/0xlemi/tunenote/internal/ui"
 	tea "github.com/charmbracelet/bubbletea"
 )
 
@@ -53,7 +53,7 @@ func getAudioLevel(buffer *audio.AudioBuffer) (rms, db float32) {
 }
 
 func main() {
-	fmt.Println("MacNote - Starting application...")
+	fmt.Println("TuneNote - Starting application...")
 
 	// Create audio capturer with PortAudio
 	capturer, err := audio.NewPortAudioCapturer(bufferSize, sampleRate, channels)

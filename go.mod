@@ -1,4 +1,4 @@
-module github.com/0xlemi/macnote
+module github.com/0xlemi/tunenote
 
 go 1.23.0
 

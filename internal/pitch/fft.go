@@ -5,7 +5,7 @@ import (
 	"math/cmplx"
 	"sort"
 
-	"github.com/0xlemi/macnote/internal/audio"
+	"github.com/0xlemi/tunenote/internal/audio"
 	"github.com/mjibson/go-dsp/fft"
 )
 

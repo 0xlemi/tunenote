@@ -1,6 +1,6 @@
-# MacNote
+# TuneNote
 
-A note-taking application designed for macOS that detects musical notes from audio input. MacNote captures audio from your microphone, analyzes the frequency, and displays the corresponding musical note in real-time through a terminal UI.
+A note-taking application designed for macOS that detects musical notes from audio input. TuneNote captures audio from your microphone, analyzes the frequency, and displays the corresponding musical note in real-time through a terminal UI.
 
 ## Features
 
@@ -31,10 +31,10 @@ go mod tidy
 
 2. Build the application
 ```bash
-go build -o macnote ./cmd
+go build -o tunenote ./cmd
 ```
 
 3. Run the application
 ```bash
-./macnote
+./tunenote
 ``` 

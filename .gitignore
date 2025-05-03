@@ -1,19 +1,17 @@
-# Binaries for programs and plugins
+# Binaries
 *.exe
 *.exe~
 *.dll
 *.so
 *.dylib
-macnote
+tunenote
 
-# Test binary, built with `go test -c`
+# Build directory
+build/
+
+# Testing
 *.test
-
-# Output of the go coverage tool
 *.out
-
-# Dependency directories
-vendor/
 
 # IDE files
 .idea/
@@ -21,11 +19,6 @@ vendor/
 *.swp
 *.swo
 
-# OS generated files
+# OS files
 .DS_Store
-.DS_Store?
-._*
-.Spotlight-V100
-.Trashes
-ehthumbs.db
 Thumbs.db 

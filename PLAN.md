@@ -1,4 +1,4 @@
-# MacNote: Development Plan
+# TuneNote: Development Plan
 
 ## Phase 1: Foundation & Audio Capture
 

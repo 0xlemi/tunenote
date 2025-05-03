@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/0xlemi/macnote/internal/pitch"
+	"github.com/0xlemi/tunenote/internal/pitch"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
@@ -178,7 +178,7 @@ func getNextNote(note string) string {
 
 // View renders the UI
 func (m Model) View() string {
-	s := titleStyle.Render("MacNote - Musical Note Detector")
+	s := titleStyle.Render("TuneNote - Musical Note Detector")
 	s += "\n"
 
 	if m.currentNote != nil {
