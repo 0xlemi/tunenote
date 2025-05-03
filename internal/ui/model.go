@@ -11,13 +11,7 @@ import (
 )
 
 // Constants for UI behavior
-const (
-	// How long a note needs to be present to be considered stable (milliseconds)
-	noteStabilityThreshold = 300
-
-	// How long to keep displaying a stable note after it changes (milliseconds)
-	noteDisplayDuration = 500
-)
+// (No constants defined currently)
 
 var (
 	// Styles
@@ -32,19 +26,23 @@ var (
 	infoStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("#CCCCCC"))
 
-	// Note colors
+	noSoundStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#888888")).
+			Bold(true)
+
+	// Note colors (moderate, not too bright, not too pastel)
 	noteColors = map[string]string{
-		"C": "#E8D6B0", // Beige
-		"D": "#A020F0", // Purple
-		"E": "#FFFF00", // Yellow
-		"F": "#FFA500", // Orange
-		"G": "#00FF00", // Green
-		"A": "#FF0000", // Red
-		"B": "#0000FF", // Blue
+		"C": "#D9C399", // Moderate Beige
+		"D": "#9370DB", // Medium Purple
+		"E": "#E6E675", // Moderate Yellow
+		"F": "#E69138", // Moderate Orange
+		"G": "#6AA84F", // Moderate Green
+		"A": "#CC0000", // Moderate Red
+		"B": "#3D85C6", // Moderate Blue
 	}
 )
 
-// Returns a style for a note (including sharps which get split color)
+// Returns a style for a note
 func getNoteStyle(noteName string) lipgloss.Style {
 	if strings.HasSuffix(noteName, "#") {
 		// For sharp notes, we handle the rendering separately in View()
@@ -63,51 +61,23 @@ func getNoteStyle(noteName string) lipgloss.Style {
 	}
 }
 
-// Get the next note in the scale (for sharp note colors)
-func getNextNote(note string) string {
-	switch note {
-	case "C":
-		return "D"
-	case "D":
-		return "E"
-	case "E":
-		return "F"
-	case "F":
-		return "G"
-	case "G":
-		return "A"
-	case "A":
-		return "B"
-	case "B":
-		return "C"
-	default:
-		return "C"
-	}
-}
-
 // Model represents the UI state
 type Model struct {
-	currentNote    *pitch.Note
-	stableNote     *pitch.Note
-	notesHistory   map[string]time.Time // Track when we first saw each note
-	stableNoteTime time.Time            // When the stable note was set
-	lastNoteName   string               // Last note we displayed
-	lastUpdated    time.Time
-	updateTicker   time.Time
-	width          int
-	height         int
+	currentNote  *pitch.Note
+	lastUpdate   time.Time
+	width        int
+	height       int
+	isSilence    bool      // Whether we're currently detecting silence
+	silenceSince time.Time // When we first detected silence
 }
 
 // NewModel creates a new UI model
 func NewModel() Model {
 	return Model{
-		currentNote:    nil,
-		stableNote:     nil,
-		notesHistory:   make(map[string]time.Time),
-		stableNoteTime: time.Time{},
-		lastNoteName:   "",
-		lastUpdated:    time.Now(),
-		updateTicker:   time.Now(),
+		currentNote:  nil,
+		lastUpdate:   time.Now(),
+		isSilence:    true,
+		silenceSince: time.Now(),
 	}
 }
 
@@ -124,7 +94,10 @@ type TickMsg time.Time
 // UpdateNoteMsg is a message to update the current note
 type UpdateNoteMsg pitch.Note
 
-// Update updates the UI model based on messages
+// ClearNoteMsg is sent when we should clear the note display (no sound detected)
+type ClearNoteMsg struct{}
+
+// Update handles the model update based on a message
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
@@ -138,83 +111,40 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.height = msg.Height
 
 	case TickMsg:
-		m.updateTicker = time.Time(msg)
-
-		// Clean up old notes from history (older than 2 seconds)
-		now := time.Now()
-		for note, timestamp := range m.notesHistory {
-			if now.Sub(timestamp) > 2*time.Second {
-				delete(m.notesHistory, note)
-			}
-		}
-
+		// Just keep the ticker running
 		return m, tea.Tick(time.Millisecond*100, func(t time.Time) tea.Msg {
 			return TickMsg(t)
 		})
 
 	case UpdateNoteMsg:
+		// We have a note, so we're not in silence mode
+		m.isSilence = false
 		note := pitch.Note(msg)
 		m.currentNote = &note
+		m.lastUpdate = time.Now()
 
-		// Note stability logic
-		noteName := fmt.Sprintf("%s%d", note.Name, note.Octave)
-
-		// Record when we first saw this note
-		if _, exists := m.notesHistory[noteName]; !exists {
-			m.notesHistory[noteName] = time.Now()
-		}
-
-		// Check if this note has been present long enough to be stable
-		noteFirstSeen := m.notesHistory[noteName]
-		if time.Since(noteFirstSeen) >= noteStabilityThreshold*time.Millisecond {
-			// This note is stable, update the stable note
-			m.stableNote = &note
-			m.stableNoteTime = time.Now()
-			m.lastNoteName = noteName
-		} else if m.stableNote != nil {
-			// Check if we should still show the previous stable note
-			if time.Since(m.stableNoteTime) < noteDisplayDuration*time.Millisecond {
-				// Keep the stable note for display continuity
-			} else {
-				// Time to update to a new stable note if one exists
-				// Check if any note has been stable long enough
-				var longestNote string
-				var longestTime time.Duration
-
-				for name, firstSeen := range m.notesHistory {
-					duration := time.Since(firstSeen)
-					if duration > longestTime && duration >= noteStabilityThreshold*time.Millisecond {
-						longestNote = name
-						longestTime = duration
-					}
-				}
-
-				// If we found a stable note, update
-				if longestNote != "" && longestNote != m.lastNoteName {
-					// The new note is now considered stable
-					m.lastNoteName = longestNote
-					// We need to reconstruct the note from the name
-					parts := strings.Split(longestNote, "")
-					name := parts[0]
-					if len(parts) > 2 && parts[1] == "#" {
-						name += "#"
-					}
-					octave := 4 // Default to middle octave if parsing fails
-					fmt.Sscanf(longestNote[len(name):], "%d", &octave)
-
-					// Update the stable note
-					if m.currentNote != nil && m.currentNote.Name == name {
-						m.stableNote = m.currentNote
-					}
-					m.stableNoteTime = time.Now()
-				}
-			}
-		}
-
-		m.lastUpdated = time.Now()
+	case ClearNoteMsg:
+		// Immediately clear the note display - no delay
+		m.currentNote = nil
+		m.isSilence = true
+		m.silenceSince = time.Now()
 	}
 
 	return m, nil
+}
+
+// getNextNote returns the next note in the scale (C -> D, D -> E, etc.)
+func getNextNote(note string) string {
+	noteOrder := []string{"C", "D", "E", "F", "G", "A", "B"}
+	for i, n := range noteOrder {
+		if n == note {
+			if i < len(noteOrder)-1 {
+				return noteOrder[i+1]
+			}
+			return noteOrder[0] // Wrap around to C if B
+		}
+	}
+	return note // Fallback
 }
 
 // View renders the UI
@@ -222,64 +152,44 @@ func (m Model) View() string {
 	s := titleStyle.Render("MacNote - Musical Note Detector")
 	s += "\n"
 
-	// Determine which note to display (stable or current)
-	noteToDisplay := m.stableNote
-	if noteToDisplay == nil {
-		noteToDisplay = m.currentNote
-	}
-
-	if noteToDisplay != nil {
+	if m.currentNote != nil {
 		// Get note style based on the note name
-		noteStyle := getNoteStyle(noteToDisplay.Name)
+		noteStyle := getNoteStyle(m.currentNote.Name)
 
 		// Generate note text
-		noteText := fmt.Sprintf("%s%d", noteToDisplay.Name, noteToDisplay.Octave)
+		noteText := fmt.Sprintf("%s%d", m.currentNote.Name, m.currentNote.Octave)
 
 		// For sharps, we need to render the note with split colors
-		if strings.HasSuffix(noteToDisplay.Name, "#") {
-			baseNote := string(noteToDisplay.Name[0])
+		if strings.HasSuffix(m.currentNote.Name, "#") {
+			baseNote := string(m.currentNote.Name[0])
 			nextNote := getNextNote(baseNote)
 
 			baseColor := noteColors[baseNote]
 			nextColor := noteColors[nextNote]
 
-			// Create left and right styles with rounded borders
-			leftStyle := lipgloss.NewStyle().
+			// Create joined style with rounded border
+			joinedStyle := lipgloss.NewStyle().
 				Bold(true).
 				Foreground(lipgloss.Color("#FAFAFA")).
-				Background(lipgloss.Color(baseColor)).
 				BorderStyle(lipgloss.RoundedBorder()).
 				BorderForeground(lipgloss.Color("#333333")).
-				BorderLeft(true).
-				BorderTop(true).
-				BorderBottom(true).
-				BorderRight(false).
-				PaddingLeft(2).
-				PaddingRight(1).
-				PaddingTop(2).
-				PaddingBottom(2)
+				Padding(2, 4).
+				MarginBottom(1)
 
-			rightStyle := lipgloss.NewStyle().
-				Bold(true).
-				Foreground(lipgloss.Color("#FAFAFA")).
-				Background(lipgloss.Color(nextColor)).
-				BorderStyle(lipgloss.RoundedBorder()).
-				BorderForeground(lipgloss.Color("#333333")).
-				BorderLeft(false).
-				BorderTop(true).
-				BorderBottom(true).
-				BorderRight(true).
-				PaddingLeft(1).
-				PaddingRight(2).
-				PaddingTop(2).
-				PaddingBottom(2)
+			// Split rendering approach for sharp notes
+			baseStyle := joinedStyle.Copy().Background(lipgloss.Color(baseColor))
+			sharpStyle := joinedStyle.Copy().Background(lipgloss.Color(nextColor))
 
-			// Render the note with split colors
-			baseNoteChar := string(noteText[0])
+			// Render each part separately
+			baseChar := string(noteText[0])
 			sharpChar := "#"
 			octave := noteText[2:]
 
-			s += leftStyle.Render(baseNoteChar) + rightStyle.Render(sharpChar+octave)
+			// Combine the parts
+			s += lipgloss.JoinHorizontal(lipgloss.Top,
+				baseStyle.Render(baseChar),
+				sharpStyle.Render(sharpChar+octave))
+
 		} else {
 			// For natural notes, use a single color
 			s += noteStyle.Render(noteText)
@@ -288,11 +198,14 @@ func (m Model) View() string {
 		s += "\n"
 
 		info := fmt.Sprintf("Frequency: %.2f Hz | Cents: %+.1f",
-			noteToDisplay.Frequency,
-			noteToDisplay.Cents)
+			m.currentNote.Frequency,
+			m.currentNote.Cents)
 		s += infoStyle.Render(info)
 	} else {
-		s += infoStyle.Render("Listening for audio...")
+		// No note being detected
+		s += noSoundStyle.Render("No note detected")
+		s += "\n"
+		s += infoStyle.Render("Make a sound to see the note...")
 	}
 
 	s += "\n\n"

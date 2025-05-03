@@ -9,7 +9,8 @@ import (
 
 // Errors
 var (
-	ErrEmptyBuffer = errors.New("empty audio buffer")
+	ErrEmptyBuffer     = errors.New("empty audio buffer")
+	ErrVolumeThreshold = errors.New("volume below threshold")
 )
 
 // Note represents a musical note

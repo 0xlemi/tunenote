@@ -11,21 +11,23 @@ import (
 
 // FFTDetector implements pitch detection using FFT
 type FFTDetector struct {
-	windowSize    int
-	minFrequency  float64 // Lowest frequency to detect (Hz)
-	maxFrequency  float64 // Highest frequency to detect (Hz)
-	noiseFloor    float64 // Noise threshold (0.0-1.0)
-	peakThreshold float64 // Minimum peak height as fraction of highest peak
+	windowSize      int
+	minFrequency    float64 // Lowest frequency to detect (Hz)
+	maxFrequency    float64 // Highest frequency to detect (Hz)
+	noiseFloor      float64 // Noise threshold (0.0-1.0)
+	peakThreshold   float64 // Minimum peak height as fraction of highest peak
+	volumeThreshold float64 // Minimum RMS volume level for note detection
 }
 
 // NewFFTDetector creates a new FFT-based pitch detector
 func NewFFTDetector(windowSize int) *FFTDetector {
 	return &FFTDetector{
-		windowSize:    windowSize,
-		minFrequency:  80.0,   // E2 on guitar is ~82 Hz
-		maxFrequency:  1200.0, // E6 on guitar is ~1319 Hz
-		noiseFloor:    0.01,   // Reduce from 0.05 to 0.01 (more sensitive to quieter sounds)
-		peakThreshold: 0.2,    // Reduce from 0.3 to 0.2 (consider smaller peaks as valid)
+		windowSize:      windowSize,
+		minFrequency:    80.0,   // E2 on guitar is ~82 Hz
+		maxFrequency:    1200.0, // E6 on guitar is ~1319 Hz
+		noiseFloor:      0.01,   // Reduced from 0.05 to 0.01 (more sensitive to quieter sounds)
+		peakThreshold:   0.2,    // Reduced from 0.3 to 0.2 (consider smaller peaks as valid)
+		volumeThreshold: 0.005,  // Increased from 0.002 to 0.005 for better silence handling
 	}
 }
 
@@ -33,6 +35,38 @@ func NewFFTDetector(windowSize int) *FFTDetector {
 func (d *FFTDetector) DetectPitch(buffer *audio.AudioBuffer) (*Note, error) {
 	if buffer == nil || len(buffer.Samples) == 0 {
 		return nil, ErrEmptyBuffer
+	}
+
+	// Calculate RMS volume of the buffer
+	sumSquares := 0.0
+	peakValue := 0.0
+	for _, sample := range buffer.Samples {
+		sampleVal := float64(sample)
+		sumSquares += sampleVal * sampleVal
+
+		// Also track peak value
+		absVal := math.Abs(sampleVal)
+		if absVal > peakValue {
+			peakValue = absVal
+		}
+	}
+	rmsVolume := math.Sqrt(sumSquares / float64(len(buffer.Samples)))
+
+	// Calculate approximate dB level
+	dbLevel := -100.0          // Default very low value
+	if rmsVolume > 0.0000001 { // Avoid log(0)
+		dbLevel = 20 * math.Log10(rmsVolume)
+	}
+
+	// Skip everything if the level is too low (likely silence)
+	// Use both RMS threshold and dB threshold
+	if rmsVolume < d.volumeThreshold || dbLevel < -50.0 {
+		return nil, ErrVolumeThreshold
+	}
+
+	// If the peak value is too low, also skip (prevents processing very quiet sounds)
+	if peakValue < d.volumeThreshold*2 {
+		return nil, ErrVolumeThreshold
 	}
 
 	// Apply windowing function (Hann window)
@@ -49,6 +83,11 @@ func (d *FFTDetector) DetectPitch(buffer *audio.AudioBuffer) (*Note, error) {
 
 	// Find the fundamental frequency using peak detection
 	peakFreq := d.findFundamentalFrequency(spectrum, buffer.SampleRate)
+
+	// If the detected frequency is too low or too high, it's likely noise
+	if peakFreq < d.minFrequency || peakFreq > d.maxFrequency {
+		return nil, ErrVolumeThreshold
+	}
 
 	// Convert frequency to note
 	return frequencyToNote(peakFreq), nil

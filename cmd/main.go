@@ -24,30 +24,29 @@ const (
 	debugInterval    = time.Second * 2 // How often to print debug info
 )
 
-// getAudioLevel calculates RMS and peak audio levels
-func getAudioLevel(buffer *audio.AudioBuffer) (rms, peak float32) {
+// getAudioLevel calculates RMS and dB level
+func getAudioLevel(buffer *audio.AudioBuffer) (rms, db float32) {
 	if buffer == nil || len(buffer.Samples) == 0 {
-		return 0, 0
+		return 0, -100
 	}
 
 	sumSquares := float32(0)
-	peakVal := float32(0)
 
 	for _, sample := range buffer.Samples {
-		// Get absolute value
-		absVal := float32(math.Abs(float64(sample)))
-
-		// For peak
-		if absVal > peakVal {
-			peakVal = absVal
-		}
-
-		// For RMS
 		sumSquares += sample * sample
 	}
 
 	rms = float32(math.Sqrt(float64(sumSquares / float32(len(buffer.Samples)))))
-	return rms, peakVal
+
+	// Calculate dB (with protection against log(0))
+	if rms > 0.0000001 { // Avoid log(0)
+		// Convert to dB: dB = 20 * log10(amplitude)
+		db = 20 * float32(math.Log10(float64(rms)))
+	} else {
+		db = -100
+	}
+
+	return rms, db
 }
 
 func main() {
@@ -75,11 +74,15 @@ func main() {
 	// Start UI
 	p := tea.NewProgram(model, tea.WithAltScreen())
 
-	// Variables for audio level debug
+	// Variables
 	lastDebugTime := time.Now()
+	lastNoteTime := time.Now()
 
-	// Adjust the initial amplification
-	capturer.SetAmplification(10.0) // Start with higher sensitivity
+	// Increase audio input sensitivity
+	capturer.SetAmplification(10.0)
+
+	// Print startup message
+	fmt.Println("Listening for musical notes...")
 
 	// Start a goroutine for audio processing
 	go func() {
@@ -87,14 +90,8 @@ func main() {
 			// Get audio buffer
 			buffer, err := capturer.GetBuffer()
 			if err != nil {
+				time.Sleep(time.Millisecond * 10)
 				continue
-			}
-
-			// Debug audio levels
-			if enableLevelDebug && time.Since(lastDebugTime) > debugInterval {
-				rms, peak := getAudioLevel(buffer)
-				fmt.Printf("Audio levels - RMS: %.6f, Peak: %.6f\n", rms, peak)
-				lastDebugTime = time.Now()
 			}
 
 			// Skip if buffer is empty or too small
@@ -103,22 +100,44 @@ func main() {
 				continue
 			}
 
-			// Detect pitch
-			note, err := detector.DetectPitch(buffer)
-			if err != nil {
-				time.Sleep(time.Millisecond * 10)
+			// Get audio levels for monitoring
+			rms, db := getAudioLevel(buffer)
+
+			// Debug output
+			if enableLevelDebug && time.Since(lastDebugTime) > debugInterval {
+				fmt.Printf("Audio: RMS=%.6f, dB=%.1f\n", rms, db)
+				lastDebugTime = time.Now()
+			}
+
+			// MUCH more aggressive silence detection - higher dB threshold
+			// and clear notes immediately on silence
+			if db < -30 { // Was -50, now -30 for more aggressive silence detection
+				p.Send(ui.ClearNoteMsg{})
+				time.Sleep(time.Millisecond * 50)
 				continue
 			}
 
-			// Update UI with detected note
-			p.Send(ui.UpdateNoteMsg(*note))
+			// Try to detect pitch
+			note, err := detector.DetectPitch(buffer)
+			if err != nil {
+				// Any error in pitch detection should clear the display
+				p.Send(ui.ClearNoteMsg{})
+				time.Sleep(time.Millisecond * 50)
+				continue
+			}
 
-			// Sleep a bit to avoid excessive CPU usage and reduce flickering
-			time.Sleep(time.Millisecond * 100)
+			// Only send note updates at reasonable intervals to prevent flicker
+			if time.Since(lastNoteTime) > 80*time.Millisecond {
+				p.Send(ui.UpdateNoteMsg(*note))
+				lastNoteTime = time.Now()
+			}
+
+			// Sleep a bit to avoid excessive CPU usage
+			time.Sleep(time.Millisecond * 50)
 		}
 	}()
 
-	// Run the program
+	// Run the UI
 	if _, err := p.Run(); err != nil {
 		fmt.Printf("Error running program: %v\n", err)
 		os.Exit(1)
