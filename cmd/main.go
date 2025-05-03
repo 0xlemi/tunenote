@@ -22,6 +22,9 @@ const (
 	// Debug settings
 	enableLevelDebug = true            // Set to true to print audio levels
 	debugInterval    = time.Second * 2 // How often to print debug info
+
+	// Note stabilization
+	stabilizationDelay = 300 * time.Millisecond // Delay after volume increase before registering note
 )
 
 // getAudioLevel calculates RMS and dB level
@@ -77,9 +80,12 @@ func main() {
 	// Variables
 	lastDebugTime := time.Now()
 	lastNoteTime := time.Now()
+	isVolumeRising := false
+	volumeRiseTime := time.Time{}
+	lastDB := float32(-100)
 
 	// Increase audio input sensitivity
-	capturer.SetAmplification(7.0)
+	capturer.SetAmplification(10.0)
 
 	// Print startup message
 	fmt.Println("Listening for musical notes...")
@@ -109,13 +115,37 @@ func main() {
 				lastDebugTime = time.Now()
 			}
 
+			// Detect when volume is rising (note beginning)
+			if db > lastDB+3 && db > -40 {
+				// Volume is rising significantly and above threshold
+				if !isVolumeRising {
+					isVolumeRising = true
+					volumeRiseTime = time.Now()
+					// Don't attempt pitch detection until stabilization period is over
+					lastDB = db
+					time.Sleep(time.Millisecond * 10)
+					continue
+				}
+			}
+			lastDB = db
+
 			// MUCH more aggressive silence detection - higher dB threshold
 			// and clear notes immediately on silence
 			if db < -30 { // Was -50, now -30 for more aggressive silence detection
 				p.Send(ui.ClearNoteMsg{})
+				isVolumeRising = false // Reset volume rising flag
 				time.Sleep(time.Millisecond * 50)
 				continue
 			}
+
+			// If we're in the initial rising volume period, wait for stabilization
+			if isVolumeRising && time.Since(volumeRiseTime) < stabilizationDelay {
+				time.Sleep(time.Millisecond * 10)
+				continue
+			}
+
+			// Past stabilization period, note should be stable
+			isVolumeRising = false
 
 			// Try to detect pitch
 			note, err := detector.DetectPitch(buffer)
