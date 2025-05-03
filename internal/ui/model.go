@@ -27,8 +27,16 @@ var (
 			Foreground(lipgloss.Color("#CCCCCC"))
 
 	noSoundStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#888888")).
-			Bold(true)
+			Foreground(lipgloss.Color("#FAFAFA")).
+			Background(lipgloss.Color("#888888")).
+			Bold(true).
+			BorderStyle(lipgloss.RoundedBorder()).
+			BorderForeground(lipgloss.Color("#333333")).
+			Padding(2, 4).
+			MarginBottom(1)
+
+	// Standard box size
+	boxWidth = 8
 
 	// Note colors (moderate, not too bright, not too pastel)
 	noteColors = map[string]string{
@@ -174,6 +182,8 @@ func (m Model) View() string {
 				BorderStyle(lipgloss.RoundedBorder()).
 				BorderForeground(lipgloss.Color("#333333")).
 				Padding(2, 4).
+				Width(boxWidth / 2). // Half width
+				Align(lipgloss.Center).
 				MarginBottom(1)
 
 			// Split rendering approach for sharp notes
@@ -191,7 +201,8 @@ func (m Model) View() string {
 				sharpStyle.Render(sharpChar+octave))
 
 		} else {
-			// For natural notes, use a single color
+			// For natural notes, use a single color with fixed width
+			noteStyle = noteStyle.Width(boxWidth).Align(lipgloss.Center)
 			s += noteStyle.Render(noteText)
 		}
 
@@ -202,8 +213,9 @@ func (m Model) View() string {
 			m.currentNote.Cents)
 		s += infoStyle.Render(info)
 	} else {
-		// No note being detected
-		s += noSoundStyle.Render("No note detected")
+		// No note being detected - show gray placeholder box
+		placeholder := noSoundStyle.Width(boxWidth).Align(lipgloss.Center).Render("---")
+		s += placeholder
 		s += "\n"
 		s += infoStyle.Render("Make a sound to see the note...")
 	}
