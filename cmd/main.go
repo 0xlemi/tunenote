@@ -79,7 +79,7 @@ func main() {
 	lastNoteTime := time.Now()
 
 	// Increase audio input sensitivity
-	capturer.SetAmplification(10.0)
+	capturer.SetAmplification(7.0)
 
 	// Print startup message
 	fmt.Println("Listening for musical notes...")
