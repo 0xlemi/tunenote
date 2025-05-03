@@ -9,14 +9,15 @@ import (
 
 // PortAudioCapturer implements audio capture using PortAudio
 type PortAudioCapturer struct {
-	isCapturing bool
-	stream      *portaudio.Stream
-	buffer      *AudioBuffer
-	bufferSize  int
-	sampleRate  int
-	channels    int
-	inputBuffer []float32
-	bufferMutex sync.Mutex
+	isCapturing   bool
+	stream        *portaudio.Stream
+	buffer        *AudioBuffer
+	bufferSize    int
+	sampleRate    int
+	channels      int
+	inputBuffer   []float32
+	bufferMutex   sync.Mutex
+	amplification float32 // Audio signal amplification factor
 }
 
 // NewPortAudioCapturer creates a new audio capturer using PortAudio
@@ -33,10 +34,11 @@ func NewPortAudioCapturer(bufferSize, sampleRate, channels int) (*PortAudioCaptu
 			Samples:    make([]float32, 0, bufferSize),
 			SampleRate: sampleRate,
 		},
-		bufferSize:  bufferSize,
-		sampleRate:  sampleRate,
-		channels:    channels,
-		inputBuffer: make([]float32, bufferSize*channels),
+		bufferSize:    bufferSize,
+		sampleRate:    sampleRate,
+		channels:      channels,
+		inputBuffer:   make([]float32, bufferSize*channels),
+		amplification: 5.0, // Amplify input signal by 5x
 	}
 
 	return capturer, nil
@@ -109,21 +111,24 @@ func (c *PortAudioCapturer) processAudio(in, _ []float32) {
 		// Create a mono buffer for averaging channels
 		monoBuffer := make([]float32, len(in)/c.channels)
 
-		// Average each set of channel samples
+		// Average each set of channel samples and apply amplification
 		for i := 0; i < len(monoBuffer); i++ {
 			sum := float32(0)
 			for ch := 0; ch < c.channels; ch++ {
 				sum += in[i*c.channels+ch]
 			}
-			monoBuffer[i] = sum / float32(c.channels)
+			// Average the channels and apply amplification
+			monoBuffer[i] = (sum / float32(c.channels)) * c.amplification
 		}
 
 		// Update the buffer
 		c.buffer.Samples = monoBuffer
 	} else {
-		// Just copy the mono input
+		// Just copy the mono input and apply amplification
 		c.buffer.Samples = make([]float32, len(in))
-		copy(c.buffer.Samples, in)
+		for i, sample := range in {
+			c.buffer.Samples[i] = sample * c.amplification
+		}
 	}
 }
 
@@ -149,4 +154,17 @@ func (c *PortAudioCapturer) GetBuffer() (*AudioBuffer, error) {
 // IsCapturing returns true if currently capturing audio
 func (c *PortAudioCapturer) IsCapturing() bool {
 	return c.isCapturing
+}
+
+// SetAmplification sets the audio amplification factor
+func (c *PortAudioCapturer) SetAmplification(factor float32) {
+	c.bufferMutex.Lock()
+	defer c.bufferMutex.Unlock()
+
+	// Ensure amplification is positive
+	if factor < 0.1 {
+		factor = 0.1
+	}
+
+	c.amplification = factor
 }

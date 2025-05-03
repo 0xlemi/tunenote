@@ -44,15 +44,15 @@
 ## Phase 4: Refinement & Features
 
 ### Improve pitch detection accuracy
-- [ ] Fine-tune algorithms based on testing
-- [ ] Add noise filtering
-- [ ] Handle edge cases (very high/low notes)
+- [x] Fine-tune algorithms based on testing
+- [x] Add noise filtering
+- [x] Handle edge cases (very high/low notes)
 
 ### Enhance terminal UI
-- [ ] Add visualization of pitch accuracy
-- [ ] Implement note history display
+- [x] Add visualization of pitch accuracy
+- [x] Implement note stability tracking
 - [ ] Create settings menu for configuration
-- [ ] Polish visual design and animations
+- [x] Polish visual design with rounded borders and color-coded notes
 
 ## Phase 5: Optimization & Completion
 
