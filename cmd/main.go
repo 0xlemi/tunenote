@@ -25,6 +25,8 @@ const (
 
 	// Note stabilization
 	stabilizationDelay = 300 * time.Millisecond // Delay after volume increase before registering note
+
+	amplificationLevel = 8.0
 )
 
 // getAudioLevel calculates RMS and dB level
@@ -85,7 +87,7 @@ func main() {
 	lastDB := float32(-100)
 
 	// Increase audio input sensitivity
-	capturer.SetAmplification(10.0)
+	capturer.SetAmplification(amplificationLevel)
 
 	// Print startup message
 	fmt.Println("Listening for musical notes...")

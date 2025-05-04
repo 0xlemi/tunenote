@@ -58,13 +58,13 @@ var (
 
 	// Note colors (moderate, not too bright, not too pastel)
 	noteColors = map[string]string{
-		"C": "#D9C399", // Moderate Beige
-		"D": "#9370DB", // Medium Purple
-		"E": "#E6E675", // Moderate Yellow
-		"F": "#E69138", // Moderate Orange
-		"G": "#6AA84F", // Moderate Green
-		"A": "#CC0000", // Moderate Red
-		"B": "#3D85C6", // Moderate Blue
+		"C": "#e5cf9e", // Moderate Beige
+		"D": "#663e7d", // Medium Purple
+		"E": "#e3a53e", // Moderate Yellow
+		"F": "#c4563f", // Moderate Orange-Red
+		"G": "#43873c", // Moderate Green
+		"A": "#b64040", // Moderate Red
+		"B": "#2a7bba", // Moderate Blue
 	}
 )
 
