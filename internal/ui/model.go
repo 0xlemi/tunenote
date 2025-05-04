@@ -53,6 +53,24 @@ var (
 	timelineLabelStyle = lipgloss.NewStyle().
 				Foreground(lipgloss.Color("#CCCCCC"))
 
+	buttonStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#FFFFFF")).
+			Background(lipgloss.Color("#555555")).
+			BorderStyle(lipgloss.RoundedBorder()).
+			BorderForeground(lipgloss.Color("#999999")).
+			Padding(0, 2).
+			MarginLeft(2).
+			Bold(true)
+
+	clearButtonStyle = lipgloss.NewStyle().
+				Foreground(lipgloss.Color("#FFFFFF")).
+				Background(lipgloss.Color("#AA3333")). // Red background for clear button
+				BorderStyle(lipgloss.RoundedBorder()).
+				BorderForeground(lipgloss.Color("#662222")).
+				Padding(0, 2).
+				MarginLeft(2).
+				Bold(true)
+
 	// Standard box size
 	boxWidth = 8
 
@@ -95,27 +113,29 @@ func getNoteStyle(noteName string) lipgloss.Style {
 
 // Model represents the UI state
 type Model struct {
-	currentNote  *pitch.Note
-	timeline     []TimelineEntry // Timeline of recent notes
-	lastUpdate   time.Time
-	width        int
-	height       int
-	isSilence    bool      // Whether we're currently detecting silence
-	silenceSince time.Time // When we first detected silence
-	audioRMS     float32   // Current RMS level
-	audioDB      float32   // Current dB level
-	showDebug    bool      // Whether to show debug info
+	currentNote    *pitch.Note
+	timeline       []TimelineEntry // Timeline of recent notes
+	lastUpdate     time.Time
+	width          int
+	height         int
+	isSilence      bool      // Whether we're currently detecting silence
+	silenceSince   time.Time // When we first detected silence
+	audioRMS       float32   // Current RMS level
+	audioDB        float32   // Current dB level
+	showDebug      bool      // Whether to show debug info
+	timelineFrozen bool      // Whether the timeline is frozen/paused
 }
 
 // NewModel creates a new UI model
 func NewModel() Model {
 	return Model{
-		currentNote:  nil,
-		timeline:     make([]TimelineEntry, 0, maxTimelineEntries),
-		lastUpdate:   time.Now(),
-		isSilence:    true,
-		silenceSince: time.Now(),
-		showDebug:    true, // Default to showing debug info
+		currentNote:    nil,
+		timeline:       make([]TimelineEntry, 0, maxTimelineEntries),
+		lastUpdate:     time.Now(),
+		isSilence:      true,
+		silenceSince:   time.Now(),
+		showDebug:      true, // Default to showing debug info
+		timelineFrozen: false,
 	}
 }
 
@@ -151,6 +171,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "d":
 			// Toggle debug display
 			m.showDebug = !m.showDebug
+		case "f", "space":
+			// Toggle timeline freeze
+			m.timelineFrozen = !m.timelineFrozen
+		case "c":
+			// Clear timeline history
+			m.timeline = make([]TimelineEntry, 0, maxTimelineEntries)
 		}
 
 	case tea.WindowSizeMsg:
@@ -178,8 +204,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Update current note
 		m.currentNote = &note
 
-		// Add to timeline if it's a new note
-		if addToTimeline {
+		// Add to timeline if it's a new note and timeline is not frozen
+		if addToTimeline && !m.timelineFrozen {
 			// Create a copy to store in timeline
 			noteCopy := note
 
@@ -329,7 +355,26 @@ func (m Model) View() string {
 
 	// Render timeline
 	if len(m.timeline) > 0 {
-		s += timelineLabelStyle.Render("Timeline: (newest notes on the right)")
+		// Create timeline header with freeze button
+		var timelineHeader string
+		freezeButtonText := "Freeze"
+		if m.timelineFrozen {
+			freezeButtonText = "Resume"
+			timelineHeader = timelineLabelStyle.Render("Timeline: FROZEN")
+		} else {
+			timelineHeader = timelineLabelStyle.Render("Timeline: (newest notes on the right)")
+		}
+
+		// Add the freeze/resume button
+		freezeButton := buttonStyle.Render(freezeButtonText)
+
+		// Add clear button
+		clearButton := clearButtonStyle.Render("Clear")
+
+		// Join all header elements
+		timelineHeader = lipgloss.JoinHorizontal(lipgloss.Top, timelineHeader, freezeButton, clearButton)
+
+		s += timelineHeader
 		s += "\n"
 
 		// Create timeline display
@@ -352,6 +397,10 @@ func (m Model) View() string {
 		// Wrap it in the timeline box
 		s += timelineStyle.Render(timelineContent)
 		s += "\n"
+	} else {
+		// Show empty timeline box
+		emptyMessage := "No notes recorded yet"
+		s += timelineStyle.Render(emptyMessage)
 	}
 
 	// Show debug info if enabled
@@ -362,7 +411,7 @@ func (m Model) View() string {
 	}
 
 	s += "\n"
-	s += infoStyle.Render("Press d to toggle debug info | Press q to quit")
+	s += infoStyle.Render("Press f or space to freeze/resume | Press c to clear history | Press d to toggle debug | Press q to quit")
 
 	return s
 }
