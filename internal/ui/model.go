@@ -11,7 +11,12 @@ import (
 )
 
 // Constants for UI behavior
-// (No constants defined currently)
+const (
+	// Timeline settings
+	maxTimelineEntries = 50 // Maximum entries in the timeline
+	timelineWidth      = 70 // Total width of the timeline
+	noteDisplayWidth   = 3  // Width of each note entry in timeline
+)
 
 var (
 	// Styles
@@ -38,6 +43,16 @@ var (
 			Padding(2, 4).
 			MarginBottom(1)
 
+	timelineStyle = lipgloss.NewStyle().
+			BorderStyle(lipgloss.RoundedBorder()).
+			BorderForeground(lipgloss.Color("#666666")).
+			Padding(0, 1).
+			MarginTop(1).
+			Width(timelineWidth + 4) // Add padding for borders
+
+	timelineLabelStyle = lipgloss.NewStyle().
+				Foreground(lipgloss.Color("#CCCCCC"))
+
 	// Standard box size
 	boxWidth = 8
 
@@ -52,6 +67,12 @@ var (
 		"B": "#3D85C6", // Moderate Blue
 	}
 )
+
+// TimelineEntry represents a note in the timeline with timestamp
+type TimelineEntry struct {
+	Note      *pitch.Note
+	Timestamp time.Time
+}
 
 // Returns a style for a note
 func getNoteStyle(noteName string) lipgloss.Style {
@@ -75,6 +96,7 @@ func getNoteStyle(noteName string) lipgloss.Style {
 // Model represents the UI state
 type Model struct {
 	currentNote  *pitch.Note
+	timeline     []TimelineEntry // Timeline of recent notes
 	lastUpdate   time.Time
 	width        int
 	height       int
@@ -89,6 +111,7 @@ type Model struct {
 func NewModel() Model {
 	return Model{
 		currentNote:  nil,
+		timeline:     make([]TimelineEntry, 0, maxTimelineEntries),
 		lastUpdate:   time.Now(),
 		isSilence:    true,
 		silenceSince: time.Now(),
@@ -144,7 +167,35 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// We have a note, so we're not in silence mode
 		m.isSilence = false
 		note := pitch.Note(msg)
+
+		// Check if the current note is different from the last note
+		addToTimeline := true
+		if m.currentNote != nil && note.Name == m.currentNote.Name && note.Octave == m.currentNote.Octave {
+			// Same note as current, don't add to timeline
+			addToTimeline = false
+		}
+
+		// Update current note
 		m.currentNote = &note
+
+		// Add to timeline if it's a new note
+		if addToTimeline {
+			// Create a copy to store in timeline
+			noteCopy := note
+
+			// Add to the end of the timeline
+			entry := TimelineEntry{
+				Note:      &noteCopy,
+				Timestamp: time.Now(),
+			}
+			m.timeline = append(m.timeline, entry)
+
+			// Trim timeline if it gets too long
+			if len(m.timeline) > maxTimelineEntries {
+				m.timeline = m.timeline[len(m.timeline)-maxTimelineEntries:]
+			}
+		}
+
 		m.lastUpdate = time.Now()
 
 	case UpdateAudioLevelMsg:
@@ -174,6 +225,39 @@ func getNextNote(note string) string {
 		}
 	}
 	return note // Fallback
+}
+
+// getNoteColor returns the color for a note
+func getNoteColor(noteName string) string {
+	if strings.HasSuffix(noteName, "#") {
+		// For sharp notes, use the base note color
+		baseNote := string(noteName[0])
+		return noteColors[baseNote]
+	}
+	return noteColors[noteName]
+}
+
+// renderTimelineNote renders a compact note representation for the timeline
+func renderTimelineNote(note *pitch.Note) string {
+	if note == nil {
+		return strings.Repeat(" ", noteDisplayWidth)
+	}
+
+	// Create a compact representation of the note (e.g., "C4", "D#5")
+	noteText := note.Name
+	if len(noteText) == 1 {
+		noteText += " " // Add space for single-char notes to align with sharps
+	}
+
+	// Create style with appropriate color
+	noteColor := getNoteColor(note.Name)
+	timelineNoteStyle := lipgloss.NewStyle().
+		Background(lipgloss.Color(noteColor)).
+		Foreground(lipgloss.Color("#FFFFFF")).
+		Width(noteDisplayWidth).
+		Align(lipgloss.Center)
+
+	return timelineNoteStyle.Render(noteText)
 }
 
 // View renders the UI
@@ -242,6 +326,33 @@ func (m Model) View() string {
 	}
 
 	s += "\n"
+
+	// Render timeline
+	if len(m.timeline) > 0 {
+		s += timelineLabelStyle.Render("Timeline: (newest notes on the right)")
+		s += "\n"
+
+		// Create timeline display
+		timelineContent := ""
+
+		// Calculate how many entries we can show in the timeline
+		entriesToShow := len(m.timeline)
+		startIndex := 0
+
+		if entriesToShow > timelineWidth/noteDisplayWidth {
+			entriesToShow = timelineWidth / noteDisplayWidth
+			startIndex = len(m.timeline) - entriesToShow
+		}
+
+		// Create the timeline as a series of colored blocks
+		for i := startIndex; i < len(m.timeline); i++ {
+			timelineContent += renderTimelineNote(m.timeline[i].Note)
+		}
+
+		// Wrap it in the timeline box
+		s += timelineStyle.Render(timelineContent)
+		s += "\n"
+	}
 
 	// Show debug info if enabled
 	if m.showDebug {
